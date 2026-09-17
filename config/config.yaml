@@ -1,0 +1,53 @@
+# 뉴스 수집 및 LLM 파이프라인 설정
+# 증권사 연동(매매)은 이 단계에서 다루지 않는다.
+
+market_hours:
+  timezone: "Asia/Seoul"
+  # 장 시작/종료 (동시호가 포함 여유있게 잡음)
+  start: "09:00"
+  end: "15:30"
+  # 주말 제외 여부
+  weekdays_only: true
+
+polling:
+  # 뉴스 수집 주기 (초)
+  interval_seconds: 30
+
+news_sources:
+  # RSS 피드 목록. 동작 확인된 항목만 우선 등록, 나머지는 필요시 추가/검증 후 주석 해제
+  rss_feeds:
+    - name: "한국경제 - 경제"
+      url: "https://www.hankyung.com/feed/economy"
+    - name: "한국경제 - 증권"
+      url: "https://www.hankyung.com/feed/finance"
+    # - name: "연합뉴스 - 경제"
+    #   url: "https://www.yna.co.kr/rss/economy.xml"
+    # - name: "매일경제 - 증권"
+    #   url: "https://www.mk.co.kr/rss/30000001/"
+
+  # 같은 뉴스 재수집 방지를 위해 최근 N개의 기사 URL/제목 해시를 메모리에 유지
+  dedup_cache_size: 500
+
+ollama:
+  host: "http://localhost:11434"
+  # qwen2.5:7b - 다국어/한국어 인식이 llama3.1:8b보다 좋고 속도도 비슷해서 기본값으로 채택.
+  # 다른 모델로 바꾸려면 `ollama pull <모델명>` 후 이 값만 변경하면 됨.
+  model: "qwen2.5:7b"
+  # 1차 필터 판단 제한시간(초)
+  timeout_seconds: 15
+
+claude:
+  # true로 바꾸면 Ollama 1차 필터를 통과한 뉴스에 대해 Claude API로 2차 정밀분석을 수행한다.
+  # false(기본값)면 Ollama 결과만으로 후보를 판단한다 - API 비용 없이 로컬에서만 테스트 가능.
+  enabled: false
+  model: "claude-sonnet-5"
+  max_tokens: 1024
+  # 2차 정밀분석 신뢰도 임계값 (이 값 미만이면 후보에서 제외)
+  min_confidence: 0.6
+
+storage:
+  sqlite_path: "data/news_pipeline.db"
+
+logging:
+  level: "INFO"
+  file: "logs/pipeline.log"
