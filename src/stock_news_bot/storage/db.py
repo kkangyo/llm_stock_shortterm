@@ -3,9 +3,11 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from stock_news_bot.models.schemas import PipelineRecord
+from stock_news_bot.timeutil import utcnow
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS pipeline_records (
@@ -66,6 +68,23 @@ class ResultStore:
             ),
         )
         self.conn.commit()
+
+    def get_recent_seen(self, max_age: timedelta) -> dict[str, datetime]:
+        """최근 max_age 이내에 처리한 뉴스의 news_id -> 발행시각(UTC) 맵.
+
+        프로세스를 재시작해도 이미 처리한 뉴스를 다시 후보로 띄우지 않도록,
+        파이프라인 시작 시 이 값으로 NewsCollector의 중복 제거 상태를 채운다.
+        """
+        cutoff = (utcnow() - max_age).isoformat()
+        cur = self.conn.execute(
+            """
+            SELECT news_id, COALESCE(published_at, created_at)
+            FROM pipeline_records
+            WHERE COALESCE(published_at, created_at) >= ?
+            """,
+            (cutoff,),
+        )
+        return {news_id: datetime.fromisoformat(ts) for news_id, ts in cur.fetchall()}
 
     def close(self) -> None:
         self.conn.close()

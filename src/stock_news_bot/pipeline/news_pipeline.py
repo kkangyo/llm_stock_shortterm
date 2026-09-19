@@ -6,7 +6,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, time
+from datetime import datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
 from rich.console import Console
@@ -51,10 +51,13 @@ def is_market_open(now: datetime | None = None) -> bool:
 
 class NewsPipeline:
     def __init__(self):
-        self.collector = NewsCollector()
+        self.store = ResultStore(settings.sqlite_path)
+        # 재시작 전 최근에 이미 처리한 뉴스는 SQLite 이력에서 불러와 중복
+        # 제거 상태를 미리 채운다 - 그래야 재실행해도 같은 후보가 다시 뜨지 않는다.
+        seen_ids = self.store.get_recent_seen(timedelta(minutes=settings.news_max_age_minutes))
+        self.collector = NewsCollector(seen_ids=seen_ids)
         self.ollama_filter = OllamaFilter()
         self.claude_analyzer: ClaudeAnalyzer | None = None
-        self.store = ResultStore(settings.sqlite_path)
 
     def _get_claude(self) -> ClaudeAnalyzer:
         # API 키가 없으면 여기서 바로 에러를 내도록 지연 초기화

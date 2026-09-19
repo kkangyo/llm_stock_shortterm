@@ -103,6 +103,7 @@ python -m stock_news_bot.main
 |---|---|
 | `polling.interval_seconds` | 뉴스 수집 주기 (초). 처음엔 30~60초 정도로 여유있게 시작 권장 |
 | `news_sources.rss_feeds` | RSS 피드 목록. 현재 한국경제(경제/증권) 2개만 검증된 상태로 등록됨 |
+| `news_sources.max_age_minutes` | 발행된 지 이 시간(분)이 지난 뉴스는 처리 대상에서 제외 (기본 60분). 단타 목적상 오래된 뉴스는 의미가 없어서 걸러내고, 남은 뉴스는 최신순으로 정렬해서 처리한다. 같은 값이 "재시작해도 최근에 이미 처리한 뉴스를 다시 후보로 띄우지 않기 위한 기억 기간"으로도 쓰인다 (SQLite 이력 기반) |
 | `ollama.model` | `ollama pull`로 받은 모델명과 일치해야 함 |
 | `claude.enabled` | Claude 2차 분석 사용 여부. 기본 `false` (Ollama만 사용, API 비용 없음) |
 | `claude.min_confidence` | 이 값 미만 confidence는 매수 후보에서 제외 (현재는 로직에서 참고용, 실제 필터링은 추후 매매 엔진 단계에서 적용) |

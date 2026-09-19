@@ -38,7 +38,7 @@ class Settings:
         # news sources
         ns = self._raw["news_sources"]
         self.rss_feeds: list[dict[str, str]] = ns["rss_feeds"]
-        self.dedup_cache_size: int = ns["dedup_cache_size"]
+        self.news_max_age_minutes: int = ns["max_age_minutes"]
 
         # ollama
         oc = self._raw["ollama"]

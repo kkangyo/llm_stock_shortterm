@@ -6,6 +6,8 @@ from enum import Enum
 
 from pydantic import BaseModel, Field
 
+from stock_news_bot.timeutil import utcnow
+
 
 class NewsItem(BaseModel):
     """뉴스 수집기가 만들어내는 원본 뉴스 단위"""
@@ -15,8 +17,8 @@ class NewsItem(BaseModel):
     summary: str = ""
     url: str
     source: str
-    published_at: datetime | None = None
-    fetched_at: datetime = Field(default_factory=datetime.now)
+    published_at: datetime | None = None  # UTC (feedparser 정규화 기준)
+    fetched_at: datetime = Field(default_factory=utcnow)
 
 
 class Sentiment(str, Enum):
@@ -60,4 +62,4 @@ class PipelineRecord(BaseModel):
     news: NewsItem
     ollama_result: OllamaFilterResult | None = None
     claude_result: ClaudeAnalysisResult | None = None
-    created_at: datetime = Field(default_factory=datetime.now)
+    created_at: datetime = Field(default_factory=utcnow)  # UTC
