@@ -6,6 +6,11 @@ pydantic>=2.7
 # --- News collection ---
 feedparser>=6.0.11
 requests>=2.32
+trafilatura>=2.0   # 1차 필터가 종목을 못 찾았을 때 기사 본문 보강용
+
+# --- 실제 코스피/코스닥 상장 종목 대조 (KRX 마스터 목록) ---
+pandas>=2.0
+finance-datareader>=0.9.50
 
 # --- LLM clients ---
 ollama>=0.3.0

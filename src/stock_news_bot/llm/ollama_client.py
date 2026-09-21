@@ -12,26 +12,12 @@ import requests
 from ollama import Client
 
 from stock_news_bot.config import settings
+from stock_news_bot.llm.prompts import FILTER_SYSTEM_PROMPT
 from stock_news_bot.models.schemas import NewsItem, OllamaFilterResult, Sentiment
 
 logger = logging.getLogger(__name__)
 
-_SYSTEM_PROMPT = """\
-너는 한국 주식시장 뉴스를 빠르게 스크리닝하는 필터다.
-주어진 뉴스 제목/요약을 보고 아래 JSON 형식으로만 답하라. 다른 텍스트는 절대 출력하지 마라.
-
-{
-  "is_relevant": true|false,       // 특정 상장 종목의 주가에 영향을 줄 만한 뉴스인가
-  "sentiment": "positive"|"negative"|"neutral",
-  "candidate_tickers": ["종목명1", "종목명2"],  // 언급되거나 추정되는 종목명 (한글 상호명)
-  "reason": "한 문장 이유"
-}
-
-판단 기준:
-- 거시경제/시황 전반 뉴스(금리, 환율 등)는 특정 종목명이 명시되지 않으면 is_relevant=false
-- 특정 기업의 실적, 계약, 수주, 신제품, 규제, 소송, 대표이사 이슈 등은 is_relevant=true
-- 애매하면 is_relevant=true 로 판단해서 다음 단계로 넘겨라 (놓치는 것보다 과다 탐지가 낫다)
-"""
+_SYSTEM_PROMPT = FILTER_SYSTEM_PROMPT
 
 
 class OllamaFilter:

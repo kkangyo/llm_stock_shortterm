@@ -26,11 +26,26 @@ news_sources:
     #   url: "https://www.mk.co.kr/rss/30000001/"
 
   # 발행된 지 이 시간(분)이 지난 뉴스는 처리 대상에서 제외한다.
-  # 단타 매매는 신선도가 생명이라 오래된 뉴스는 걸러내고, 같은 값이
-  # 동시에 "같은 뉴스를 다시 처리하지 않기 위한 기억 기간"으로도 쓰인다
-  # (프로세스를 재시작해도 이 시간 이내에 이미 처리한 뉴스는 SQLite
-  # 이력을 보고 다시 건너뛴다).
+  # 단타 매매는 신선도가 생명이라 오래된 뉴스는 걸러낸다.
   max_age_minutes: 60
+
+  # 같은 뉴스 재수집 방지를 위해 최근 N개의 기사 URL/제목 해시를 메모리에 유지
+  # (프로세스가 살아있는 동안의 러닝 윈도우 - 아래 dedup_lookback_days와는 별개)
+  dedup_cache_size: 500
+
+  # 프로세스가 재시작되면 위 메모리 캐시는 초기화되는데, RSS는 보통 최근 기사를 다시
+  # 나열하므로 그대로 두면 이미 처리한 뉴스를 "신규"로 오인해 Ollama/Claude를 중복 호출한다.
+  # 시작 시 DB에서 최근 N일치 news_id를 불러와 스킵 대상으로 미리 등록해서 방지한다.
+  dedup_lookback_days: 2
+
+local_filter:
+  # 1차 필터(뉴스 관련성/감성 스크리닝)에 사용할 로컬 LLM 백엔드.
+  # - "ollama": CPU에서 Ollama 서버로 추론. 설치/운영이 가장 쉽지만 이 PC(Intel Core
+  #   Ultra + Arc iGPU + AI Boost NPU)에서는 GPU/NPU를 전혀 쓰지 않는다.
+  # - "openvino": OpenVINO GenAI로 Intel Arc iGPU 또는 AI Boost NPU를 직접 사용해 추론.
+  #   먼저 `pip install -r requirements-openvino.txt` 후
+  #   `python scripts/download_openvino_model.py`로 모델을 받아둬야 한다.
+  backend: "openvino"
 
 ollama:
   host: "http://localhost:11434"
@@ -39,6 +54,35 @@ ollama:
   model: "qwen2.5:7b"
   # 1차 필터 판단 제한시간(초)
   timeout_seconds: 15
+
+openvino:
+  # local_filter.backend가 "openvino"일 때만 사용됨.
+  # "GPU"(Arc iGPU, 7B급 모델도 무난함) | "NPU"(AI Boost, 1~2B급 소형 모델만 안정적)
+  # | "CPU" | "AUTO"(OpenVINO가 알아서 선택)
+  device: "GPU"
+  # scripts/download_openvino_model.py의 기본 저장 경로와 맞춰둔 값.
+  # NPU로 쓰려면 1.5B 모델을 받아서 이 경로를 그 폴더로 바꿔줄 것.
+  model_path: "models/openvino/qwen2.5-7b-instruct-int4-ov"
+  max_new_tokens: 300
+
+stock_matcher:
+  # Ollama가 추출한 종목명 후보를 실제 KOSPI/KOSDAQ 상장 종목과 대조하기 위한
+  # KRX 전체 종목 목록 캐시 갱신 주기 (시간). 상장/폐지가 매일 일어나는 건
+  # 아니므로 짧게 잡을 필요 없음.
+  refresh_hours: 24
+
+  # 뉴스에서 흔히 쓰는 약칭/구(舊)상호가 실제 상장명과 문자열상 겹치지 않아
+  # 알고리즘(정확일치/부분일치/유사도)만으로는 못 찾는 경우를 위한 수동 별칭 테이블.
+  # key: 뉴스에 흔히 쓰이는 이름 -> value: KRX 상장명(정확히 일치해야 함)
+  aliases:
+    네이버: "NAVER"
+    케이티: "KT"
+    케이티앤지: "KT&G"
+    기아차: "기아"
+    기아자동차: "기아"
+    # LIG넥스원 -> LIG디펜스앤에어로스페이스로 상호 변경(079550). LLM은 옛 이름을
+    # 계속 언급하는 경우가 많아서 별칭으로 매핑해둠.
+    LIG넥스원: "LIG디펜스앤에어로스페이스"
 
 claude:
   # true로 바꾸면 Ollama 1차 필터를 통과한 뉴스에 대해 Claude API로 2차 정밀분석을 수행한다.

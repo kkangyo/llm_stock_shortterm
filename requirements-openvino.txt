@@ -1,0 +1,9 @@
+# local_filter.backend: "openvino" 사용 시에만 필요 (Intel Arc GPU / AI Boost NPU 가속).
+# 기본 requirements.txt에는 넣지 않았다 - 런타임 다운로드가 크고(수백 MB~) Ollama만
+# 쓰는 사람에게는 불필요한 설치이기 때문.
+#
+# 설치: pip install -r requirements-openvino.txt
+# 모델 다운로드: python scripts/download_openvino_model.py
+
+openvino-genai>=2025.3
+huggingface_hub>=0.24

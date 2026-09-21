@@ -4,11 +4,17 @@
   python -m stock_news_bot.main --once            # 1회만 실행 (테스트용)
   python -m stock_news_bot.main --once --force     # 장 시간 무시하고 1회 실행
   python -m stock_news_bot.main                    # 장 시간 동안 주기적으로 실행
+
+  # 1차 필터 백엔드를 config.yaml 수정 없이 일회성으로 바꿔서 실행
+  python -m stock_news_bot.main --once --force --backend openvino --device GPU
+  python -m stock_news_bot.main --once --force --backend openvino --device NPU \
+      --model-path models/openvino/qwen2.5-1.5b-instruct-int4-ov
 """
 from __future__ import annotations
 
 import argparse
 import logging
+from pathlib import Path
 
 from apscheduler.schedulers.blocking import BlockingScheduler
 
@@ -47,7 +53,35 @@ def main() -> None:
     parser.add_argument(
         "--force", action="store_true", help="장 시간이 아니어도 강제로 실행 (테스트용)"
     )
+    parser.add_argument(
+        "--backend",
+        choices=["ollama", "openvino"],
+        default=None,
+        help="1차 필터 백엔드를 config.yaml의 local_filter.backend 대신 일회성으로 지정",
+    )
+    parser.add_argument(
+        "--device",
+        choices=["CPU", "GPU", "NPU", "AUTO"],
+        default=None,
+        help="--backend openvino일 때 사용할 디바이스 (기본: config.yaml의 openvino.device)",
+    )
+    parser.add_argument(
+        "--model-path",
+        default=None,
+        help="--backend openvino일 때 사용할 모델 경로 (기본: config.yaml의 openvino.model_path)",
+    )
     args = parser.parse_args()
+
+    # config.yaml을 고치지 않고도 이 실행 한 번에 한해 백엔드/디바이스/모델을 바꿀 수 있게 함.
+    if args.backend:
+        settings.local_filter_backend = args.backend
+    if args.device:
+        settings.openvino_device = args.device
+    if args.model_path:
+        model_path = Path(args.model_path)
+        settings.openvino_model_path = (
+            model_path if model_path.is_absolute() else settings.root / model_path
+        )
 
     setup_logging()
     pipeline = NewsPipeline()
