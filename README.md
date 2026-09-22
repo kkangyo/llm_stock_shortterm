@@ -1,12 +1,12 @@
 # stock-news-bot
 
-뉴스 기반 단타 자동화 툴의 1단계: **뉴스 수집 → 로컬 LLM 1차 필터 → (선택) Claude 2차 정밀분석**
-파이프라인. 증권사 연동(실제 매수/매도)은 아직 포함하지 않았다.
+뉴스 기반 단타 자동화 툴의 1단계: **뉴스 수집 → 로컬 LLM 1차 필터 → (선택) 2차 정밀분석
+(Claude/Gemini)** 파이프라인. 증권사 연동(실제 매수/매도)은 아직 포함하지 않았다.
 
 ## 아키텍처
 
 ```
-[RSS 뉴스 수집기] → [1차 필터: 관련성/감성 스크리닝] → (claude.enabled=true일 때만) [Claude 2차 분석: 종목/신뢰도 정밀판단] → [SQLite 저장 + 콘솔 알림]
+[RSS 뉴스 수집기] → [1차 필터: 관련성/감성 스크리닝] → (analysis.enabled=true일 때만) [2차 정밀분석(Claude/Gemini): 종목/신뢰도 정밀판단] → [SQLite 저장 + 콘솔 알림]
 ```
 
 - **1차 필터 (로컬, 무료)**: 모든 신규 뉴스에 대해 "특정 종목 관련 + 호재/악재/무관"을 빠르게
@@ -21,10 +21,11 @@
     한해서만 기사 본문(`news.url`)을 가져와 다시 판단한다 (`collectors/article_fetcher.py`,
     trafilatura 사용). 유료 구독 전용 기사처럼 본문이 없으면 그대로 제외된다.
   - 두 경우 모두 최종적으로 KRX 상장 종목 목록과 대조해서 실재하지 않는 추정은 걸러낸다.
-- **Claude API (선택, 기본 비활성화)**: `config/config.yaml`의 `claude.enabled: true`로 켜면
-  1차 필터가 걸러낸 후보에 대해서만 호출해서 종목 특정, 신뢰도, 선반영 여부 등을 구조화된
-  JSON(tool use)으로 반환. API 사용량 기반 과금이 발생하므로 기본값은 꺼져 있다.
-  꺼져 있으면 1차 필터 결과만으로 후보를 표시한다 (종목명은 KRX 목록으로 검증, 신뢰도는 없음).
+- **2차 정밀분석 API (선택, 기본 비활성화)**: `config/config.yaml`의 `analysis.enabled: true`로
+  켜면 1차 필터가 걸러낸 후보에 대해서만 호출해서 종목 특정, 신뢰도, 선반영 여부 등을
+  구조화된 형태로 반환. `analysis.backend`로 `claude`(유료, tool use) 또는 `gemini`(무료
+  티어 제공, response_schema) 중 선택. 꺼져 있으면 1차 필터 결과만으로 후보를 표시한다
+  (종목명은 KRX 목록으로 검증, 신뢰도는 없음).
 - **매매 로직은 아직 없음.** 콘솔에 강조 출력되고 SQLite에 기록될 뿐, 실제 주문은
   다음 단계(증권사 API 연동)에서 추가한다.
 
@@ -41,7 +42,11 @@ src/stock_news_bot/
   llm/prompts.py               # 1차 필터 백엔드 공통 프롬프트/JSON 스키마
   llm/ollama_client.py      # 1차 필터 - Ollama(CPU) 백엔드
   llm/openvino_client.py    # 1차 필터 - OpenVINO(Intel GPU/NPU) 백엔드
-  llm/claude_client.py      # 2차 정밀분석 (tool use)
+  llm/analysis_base.py        # 2차 분석 백엔드 공통 인터페이스
+  llm/analysis_factory.py     # analysis.backend 설정에 따라 백엔드 생성
+  llm/analysis_prompts.py     # 2차 분석 공통 프롬프트/유저메시지 조립
+  llm/claude_client.py      # 2차 정밀분석 - Claude (tool use)
+  llm/gemini_client.py      # 2차 정밀분석 - Gemini (response_schema, 무료 티어)
   matcher/                  # KRX 상장 종목 목록 캐싱 + 종목명 매칭
   storage/db.py             # SQLite 저장
   pipeline/news_pipeline.py # 위 컴포넌트를 엮는 오케스트레이터 + 장시간 판정
@@ -117,17 +122,30 @@ JSON 스키마를 강제하는 구조적 출력(`StructuredOutputConfig`)을 지
 (예: 명백한 수주 호재 뉴스를 관련 없음으로 오판하는 경우 확인됨). 일단은 **GPU를 기본값으로
 권장**하고, NPU는 배터리 효율이 중요하거나 실험적으로 써보고 싶을 때 선택할 것.
 
-### 3. Claude API 키 (선택 - 기본은 로컬 1차 필터만 사용)
+### 3. 2차 정밀분석 API 키 (선택 - 기본은 로컬 1차 필터만 사용)
 
-기본 설정(`claude.enabled: false`)에서는 이 단계를 건너뛰어도 된다. Claude 2차 분석을 쓰려면:
+기본 설정(`analysis.enabled: false`)에서는 이 단계를 건너뛰어도 된다. 2차 분석을 쓰려면
+`config/config.yaml`의 `analysis.backend`로 아래 둘 중 하나를 고르고:
 
+**Claude (유료, 사용량 과금)**
 ```powershell
 Copy-Item .env.example .env
 notepad .env   # ANTHROPIC_API_KEY=sk-ant-... 입력
 ```
-
 [console.anthropic.com](https://console.anthropic.com) 에서 키 발급 (claude.ai 구독과는 별개의
-사용량 기반 과금 서비스). 키를 넣은 뒤 `config/config.yaml`에서 `claude.enabled: true`로 변경.
+사용량 기반 과금 서비스).
+
+**Gemini (무료 티어 제공)**
+```powershell
+notepad .env   # GEMINI_API_KEY=... 입력
+```
+[aistudio.google.com/apikey](https://aistudio.google.com/apikey) 에서 신용카드 없이 무료
+발급. 2026년 기준 2.5 Flash는 분당 10회/일 500회 한도(이 파이프라인은 KRX 매칭까지 통과한
+소수 후보에만 호출하므로 보통 이 안에 들어옴). **단, 무료 티어 데이터는 구글이 자사 제품
+개선에 활용할 수 있다는 점은 알아둘 것** (유료 티어는 이 조항 없음).
+
+키를 넣은 뒤 `config/config.yaml`에서 `analysis.enabled: true`, `analysis.backend: "claude"`
+또는 `"gemini"`로 설정.
 
 ### 4. 실행
 
@@ -144,8 +162,9 @@ python -m stock_news_bot.main
 - `logs/pipeline.log` 에 로그가 쌓이고
 - `data/news_pipeline.db` (SQLite) 에 처리 결과가 기록되고
 - 호재 후보가 나오면 콘솔에 강조 출력된다:
-  - `claude.enabled: false` (기본값) → `☆ 호재 후보 (1차 필터, 종목검증=...)`
-  - `claude.enabled: true` → Claude가 `buy_candidate`로 판단한 종목마다 `★ 매수 후보 (Claude 확정)`
+  - `analysis.enabled: false` (기본값) → `☆ 호재 후보 (1차 필터, 종목검증=...)`
+  - `analysis.enabled: true` → 2차 분석이 `buy_candidate`로 판단한 종목마다
+    `★ 매수 후보 (claude 확정)` 또는 `★ 매수 후보 (gemini 확정)`
     (뉴스 하나에 여러 종목이 걸리면 각각 따로 출력됨)
 
 ### 5. 유틸리티 스크립트
@@ -174,8 +193,10 @@ RSS가 다시 보여주는 최근 기사를 전부 "신규"로 재처리한다.
 | `ollama.model` | `ollama pull`로 받은 모델명과 일치해야 함 |
 | `openvino.device` / `openvino.model_path` | `local_filter.backend: openvino`일 때 쓸 디바이스(`GPU`/`NPU`/`CPU`/`AUTO`)와 모델 경로 |
 | `stock_matcher.aliases` | 뉴스에 흔히 쓰이는 이름이 KRX 상장명과 문자열상 다를 때 매핑 (예: 네이버→NAVER) |
-| `claude.enabled` | Claude 2차 분석 사용 여부. 기본 `false` (로컬 1차 필터만 사용, API 비용 없음) |
-| `claude.min_confidence` | 이 값 미만 confidence는 매수 후보에서 제외 (현재는 로직에서 참고용, 실제 필터링은 추후 매매 엔진 단계에서 적용) |
+| `analysis.enabled` | 2차 정밀분석 사용 여부. 기본 `false` (로컬 1차 필터만 사용, API 비용 없음) |
+| `analysis.backend` | 2차 분석 백엔드. `claude`(기본, 유료) 또는 `gemini`(무료 티어 제공) |
+| `analysis.min_confidence` | 이 값 미만 confidence는 매수 후보에서 제외 (현재는 로직에서 참고용, 실제 필터링은 추후 매매 엔진 단계에서 적용) |
+| `claude.model` / `gemini.model` | 각 백엔드가 쓸 모델명 |
 | `market_hours` | 장 시간 외에는 스케줄러가 폴링을 건너뜀 (`--force`로 무시 가능) |
 
 ## 알려진 제약 / 다음 단계

@@ -12,7 +12,7 @@ import requests
 from ollama import Client
 
 from stock_news_bot.config import settings
-from stock_news_bot.llm.prompts import FILTER_SYSTEM_PROMPT
+from stock_news_bot.llm.prompts import FILTER_SYSTEM_PROMPT, parse_tagged_tickers
 from stock_news_bot.models.schemas import NewsItem, OllamaFilterResult, Sentiment
 
 logger = logging.getLogger(__name__)
@@ -63,11 +63,15 @@ class OllamaFilter:
             )
             content = response["message"]["content"]
             data = json.loads(content)
+            candidate_tickers, thematic_tickers = parse_tagged_tickers(
+                data.get("candidate_tickers", []) or []
+            )
             return OllamaFilterResult(
                 news_id=news.id,
                 is_relevant=bool(data.get("is_relevant", False)),
                 sentiment=Sentiment(data.get("sentiment", "neutral")),
-                candidate_tickers=data.get("candidate_tickers", []) or [],
+                candidate_tickers=candidate_tickers,
+                thematic_tickers=thematic_tickers,
                 reason=data.get("reason", ""),
             )
         except ConnectionError:

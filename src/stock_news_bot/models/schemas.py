@@ -33,7 +33,11 @@ class OllamaFilterResult(BaseModel):
     news_id: str
     is_relevant: bool  # 특정 종목과 관련된 유의미한 뉴스인가
     sentiment: Sentiment
-    candidate_tickers: list[str] = Field(default_factory=list)  # 언급된 종목명/티커 후보
+    candidate_tickers: list[str] = Field(default_factory=list)  # 전체 후보 (명시+테마 모두)
+    # candidate_tickers 중 "본문에 직접 언급되지 않고 테마로 추정"한 것들의 부분집합.
+    # 여기 없는 candidate_tickers 항목은 LLM이 "본문에 직접 언급됨"이라고 주장한 것으로
+    # 간주되어, 파이프라인이 실제로 원문에 그 이름이 있는지 교차검증한다(할루시네이션 방지).
+    thematic_tickers: list[str] = Field(default_factory=list)
     reason: str = ""
 
 

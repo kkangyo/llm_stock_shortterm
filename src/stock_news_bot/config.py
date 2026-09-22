@@ -65,13 +65,28 @@ class Settings:
         self.krx_refresh_hours: float = sm.get("refresh_hours", 24)
         self.stock_aliases: dict[str, str] = sm.get("aliases", {}) or {}
 
+        # 2차 정밀분석 - 어떤 백엔드를 쓸지, 켤지 말지는 여기서 결정하고
+        # (claude:/gemini: 섹션은) 백엔드별 세부 설정만 담는다. local_filter와 같은 구조.
+        an = self._raw.get("analysis", {})
+        self.analysis_enabled: bool = an.get("enabled", False)
+        self.analysis_backend: str = an.get("backend", "claude")
+        self.analysis_min_confidence: float = an.get("min_confidence", 0.6)
+
         # claude
-        cc = self._raw["claude"]
-        self.claude_enabled: bool = cc.get("enabled", False)
-        self.claude_model: str = cc["model"]
-        self.claude_max_tokens: int = cc["max_tokens"]
-        self.claude_min_confidence: float = cc["min_confidence"]
+        cc = self._raw.get("claude", {})
+        self.claude_model: str = cc.get("model", "claude-sonnet-5")
+        self.claude_max_tokens: int = cc.get("max_tokens", 1024)
         self.anthropic_api_key: str | None = os.getenv("ANTHROPIC_API_KEY")
+
+        # gemini (무료 티어 제공 - .env의 GEMINI_API_KEY 필요)
+        gc = self._raw.get("gemini", {})
+        self.gemini_model: str = gc.get("model", "gemini-2.5-flash")
+        self.gemini_max_output_tokens: int = gc.get("max_output_tokens", 1024)
+        self.gemini_api_key: str | None = os.getenv("GEMINI_API_KEY")
+
+        # ranking - buy_candidate가 여러 개 동시에 뜰 때 우선순위 비교용 시간창
+        rk = self._raw.get("ranking", {})
+        self.ranking_window_minutes: int = rk.get("window_minutes", 30)
 
         # storage
         self.sqlite_path: Path = PROJECT_ROOT / self._raw["storage"]["sqlite_path"]

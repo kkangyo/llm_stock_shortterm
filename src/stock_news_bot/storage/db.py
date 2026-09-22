@@ -74,6 +74,33 @@ class ResultStore:
         )
         return {row[0] for row in rows}
 
+    def get_recent_buy_candidates(self, since: datetime) -> list[dict]:
+        """since 이후 buy_candidate가 하나라도 있었던 뉴스들을 원본 데이터 그대로 반환.
+
+        여러 buy_candidate 중 우선순위를 매길 때(pipeline/ranking.py) 비교 대상 풀을
+        만드는 용도 - assessment/matched_stocks를 여기서 파싱하지 않고 원본 JSON
+        문자열째 반환해서, 이 클래스가 스키마 모델(StockAssessment 등)에 의존하지
+        않게 한다(storage 계층과 도메인 모델을 분리).
+        """
+        rows = self.conn.execute(
+            """
+            SELECT news_id, title, url, matched_stocks, claude_assessments
+            FROM pipeline_records
+            WHERE created_at >= ? AND claude_assessments LIKE '%buy_candidate%'
+            """,
+            (since.isoformat(),),
+        )
+        return [
+            {
+                "news_id": r[0],
+                "title": r[1],
+                "url": r[2],
+                "matched_stocks": r[3],
+                "claude_assessments": r[4],
+            }
+            for r in rows
+        ]
+
     def save(self, record: PipelineRecord) -> None:
         o, c = record.ollama_result, record.claude_result
         matched_json = json.dumps(

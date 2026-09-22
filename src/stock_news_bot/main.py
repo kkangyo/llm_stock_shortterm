@@ -9,6 +9,10 @@
   python -m stock_news_bot.main --once --force --backend openvino --device GPU
   python -m stock_news_bot.main --once --force --backend openvino --device NPU \
       --model-path models/openvino/qwen2.5-1.5b-instruct-int4-ov
+
+  # --once는 기본적으로 최신 뉴스 20건만 처리한다 (전체를 다 처리하면 오래 걸림).
+  # --limit으로 다른 개수를 지정하거나, 연속 실행 모드에서도 매 사이클마다 개수를 제한할 수 있다.
+  python -m stock_news_bot.main --once --force --limit 50
 """
 from __future__ import annotations
 
@@ -24,14 +28,14 @@ from stock_news_bot.pipeline.news_pipeline import NewsPipeline, is_market_open, 
 logger = logging.getLogger(__name__)
 
 
-def run_forever(pipeline: NewsPipeline, force: bool) -> None:
+def run_forever(pipeline: NewsPipeline, force: bool, limit: int | None) -> None:
     scheduler = BlockingScheduler(timezone=settings.market_timezone)
 
     def job():
         if not force and not is_market_open():
             logger.debug("장 시간 아님 - 스킵")
             return
-        pipeline.run_once()
+        pipeline.run_once(limit=limit)
 
     scheduler.add_job(job, "interval", seconds=settings.polling_interval_seconds)
     logger.info(
@@ -70,7 +74,17 @@ def main() -> None:
         default=None,
         help="--backend openvino일 때 사용할 모델 경로 (기본: config.yaml의 openvino.model_path)",
     )
+    parser.add_argument(
+        "--limit",
+        type=int,
+        default=None,
+        help="한 사이클에 처리할 최신 뉴스 개수 상한 (기본: --once는 20건, 연속 실행은 무제한)",
+    )
     args = parser.parse_args()
+
+    # --once는 전체 뉴스를 다 처리하면 테스트할 때마다 오래 걸리므로 기본 20건으로 제한한다.
+    # --limit을 명시하면 그 값을 그대로 쓰고, 연속 실행 모드의 기본값은 계속 무제한이다.
+    limit = args.limit if args.limit is not None else (20 if args.once else None)
 
     # config.yaml을 고치지 않고도 이 실행 한 번에 한해 백엔드/디바이스/모델을 바꿀 수 있게 함.
     if args.backend:
@@ -91,10 +105,10 @@ def main() -> None:
             if not args.force and not is_market_open():
                 logger.warning("현재 장 시간이 아닙니다. --force 옵션으로 강제 실행할 수 있습니다.")
                 return
-            records = pipeline.run_once()
+            records = pipeline.run_once(limit=limit)
             logger.info("1회 실행 완료 - %d건 처리", len(records))
         else:
-            run_forever(pipeline, force=args.force)
+            run_forever(pipeline, force=args.force, limit=limit)
     finally:
         pipeline.close()
 

@@ -24,6 +24,10 @@ _MIN_NORM_LEN_FOR_SUBSTRING = 2  # 너무 짧은 이름의 부분일치는 오�
 # 부분일치 두 문자열의 길이 차이가 너무 크면(예: "이닉스" vs "에스케이하이닉스")
 # 우연히 짧은 이름이 긴 후보명 속에 끼어 있을 뿐인 오탐일 확률이 높아 제외한다.
 _MIN_SUBSTRING_LEN_RATIO = 0.5
+# find_literal_mentions()에서 원문을 스캔할 때 쓰는 최소 이름 길이. 2글자짜리
+# 짧은 상호(예: "GS", "SK")까지 자유 텍스트에서 스캔하면 우연히 걸리는 문자열과
+# 헷갈릴 위험이 커서, LLM이 뽑은 후보 매칭(match_many)보다 기준을 더 보수적으로 잡는다.
+_MIN_NORM_LEN_FOR_LITERAL_SCAN = 3
 
 
 class StockMatcher:
@@ -86,6 +90,37 @@ class StockMatcher:
             return self._to_match(candidate_name, row, "fuzzy", score)
 
         return None
+
+    def find_literal_mentions(self, text: str) -> list[StockMatch]:
+        """원문 텍스트에 실제 KRX 상장사명이 글자 그대로 등장하는지 직접 스캔한다.
+
+        LLM이 candidate_tickers를 뽑을 때 종목명을 비슷한 다른 이름으로 잘못 재현하거나
+        (예: "삼화콘덴서"를 "삼화나노기술"로 착각) 여러 종목 중 일부를 누락하는 경우가
+        실측으로 확인됐다. LLM의 재현에 의존하지 않고 원문 자체에서 정확히 그 이름이
+        보이면 무조건 잡아서 이런 손실을 보완한다.
+
+        `match()`의 부분일치 단계보다도 더 오탐에 취약하다 - 자유 텍스트라 상장사명과
+        우연히 겹치는 부분 문자열이 나올 여지가 크기 때문에, 이름 길이가 짧으면 아예
+        스캔 대상에서 뺀다(_MIN_NORM_LEN_FOR_LITERAL_SCAN). 그래도 동명이 여러 개면
+        `match()`와 동일하게 매칭을 보류한다.
+        """
+        if not text or not self.master.available:
+            return []
+
+        norm_text = normalize_name(text)
+        matches: dict[str, StockMatch] = {}
+        for norm_name, rows in self.master.by_norm_name.items():
+            if len(norm_name) < _MIN_NORM_LEN_FOR_LITERAL_SCAN:
+                continue
+            if norm_name not in norm_text:
+                continue
+            if len(rows) != 1:
+                logger.debug("원문 내 '%s' 발견했으나 동명 종목이 여러 개라 보류", norm_name)
+                continue
+            row = rows[0]
+            matches[row.ticker] = self._to_match(row.name, row, "literal_text", 1.0)
+
+        return list(matches.values())
 
     def match_many(self, candidate_names: list[str]) -> list[StockMatch]:
         """후보명 목록을 매칭하고, 같은 종목이 중복 매칭되면 한 번만 남긴다."""

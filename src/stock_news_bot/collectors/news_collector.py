@@ -67,9 +67,15 @@ class NewsCollector:
         """
         self._seen_set.update(news_ids)
 
-    def fetch_new(self) -> list[NewsItem]:
+    def fetch_new(self, limit: int | None = None) -> list[NewsItem]:
         """모든 피드를 조회해서, 아직 못 봤고 max_age_minutes 이내에 발행된
-        뉴스만 최신순으로 정렬해서 반환한다."""
+        뉴스만 최신순으로 정렬해서 반환한다.
+
+        limit을 주면 정렬 후 최신 N건만 반환한다 (수동 테스트로 --once 실행할 때
+        전체 뉴스를 다 처리하느라 오래 걸리는 걸 피하기 위함). limit에 밀려난
+        나머지는 이미 _seen_set에 등록됐으므로 이번 프로세스가 살아있는 동안은
+        다시 반환되지 않는다 - --once처럼 프로세스가 바로 끝나는 경우엔 DB에 저장되지
+        않은 채 다음 실행 때 다시 "신규"로 잡혀 순서대로 처리된다."""
         now = utcnow()
         cutoff = now - self.max_age
 
@@ -117,6 +123,9 @@ class NewsCollector:
 
         # 발행시각을 모르는 기사는 우선순위를 가장 낮춰서 뒤로 보낸다.
         new_items.sort(key=lambda n: n.published_at or datetime.min, reverse=True)
+
+        if limit is not None:
+            new_items = new_items[:limit]
 
         if new_items:
             logger.info(
